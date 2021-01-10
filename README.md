@@ -1,4 +1,6 @@
 # 2D Map creator with Python 3
+This code generates a 2-D square random map and creates a path between a starting point (given) and a goal point (that can be set as random).
+The map must have positives coordinates values between (0,0) and (n,m) with n = max width and m = max height of the map. 
 
 This code generates a 2-D square random map and creates a path between a starting point and a goal point. 
 The map must have positives coordinates values between (0,0) and (n,m) with n = max width and m = max height of the map. 
