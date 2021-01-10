@@ -1,5 +1,6 @@
 import math
 import random
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -30,13 +31,14 @@ def astar(maze, start, end, mapSize):
     closed_list = []
     # Add the start node
     open_list.append(start_node)
-    passaggi = 0
     size = mapSize[0] * mapSize[1]
     # Loop until you find the end
+    start = time.time()
     while len(open_list) > 0:
-        if passaggi > size * 10:
+        # Stop A* if it is taking too long to find a path.
+        end = time.time()
+        if (end - start) > 30:
             return None
-        passaggi += 1
         # Get the current node
         current_node = open_list[0]
         current_index = 0
@@ -141,66 +143,68 @@ class MapGenerator:
         - if plotMap is True:
             Plot representing the new map.
         """
+
+        self.path = None
+        self.mapSize = mapSize
+        self.goal = goal
         self.folder = folder
         self.plotMap = plotMap
-        if mapSize == "example":
-            self.mapSize = (random.randrange(8, 12), random.randrange(8, 12))
-        else:
-            self.mapSize = mapSize
+        self.minDistance = minDistance
+        self.startingPoint = startingPoint
+        self.wallPercentage = wallPercentage
+        self.basicMap = np.zeros(self.mapSize)
+
+        if self.goal is not None:
+            assert (
+                self.goal[0] < self.mapSize[0] and self.goal[1] < self.mapSize[1]
+            ), "the goal point is outside the map!"
+
+        if self.startingPoint is not None:
+            assert (
+                self.startingPoint[0] < self.mapSize[0]
+                and self.startingPoint[1] < self.mapSize[1]
+            ), "the starting point is outside the map!"
 
         if wallPercentage is None:
             self.wallPercentage = random.randrange(30, 50)
-        else:
-            self.wallPercentage = wallPercentage
 
-        if startingPoint is None:
-            self.startingPoint = (
-                random.randrange(0, self.mapSize[0]),
-                random.randrange(0, self.mapSize[1]),
-            )
-        else:
-            self.startingPoint = startingPoint
+    def createMap(self):
+        print("Creating a new map..")
+        start = time.time()
+        while self.path is None:
+            completeMap = self.basicMap.copy()
+            completeMap = self._CreateRandomWalls(completeMap)
+            if self.startingPoint is None:
+                # Create a list with all the map's points not occupated.
+                availableCoord = MapGenerator._findFreeCoordinates(completeMap)
+                self.startingPoint = random.choice(availableCoord)
+            completeMap[self.startingPoint[0], self.startingPoint[1]] = 2
 
-        self.goal = goal
-        while self.goal == None:
-            # choose randomly the goal with the minimunm distance specified
-            goal = (
-                random.randrange(0, self.mapSize[0] - 1),
-                random.randrange(0, self.mapSize[1] - 1),
-            )
-            dist = math.sqrt(
-                sum([(a - b) ** 2 for a, b in zip(goal, self.startingPoint)])
-            )
-            if dist > minDistance:
-                self.goal = goal
+            if self.goal is None:
+                # Create a list with all the map's points not occupated.
+                availableCoord = MapGenerator._findFreeCoordinates(completeMap)
+                self.goal = random.choice(availableCoord)
+            completeMap[self.goal[0], self.goal[1]] = 3
 
-    def mapCreator(self):
-        # Create an empty map of the designed size.
-        BasicMap = np.zeros(self.mapSize)
-        # Assign the start and the end point in the map.
-        BasicMap[self.startingPoint] = 2
-        BasicMap[self.goal] = 3
-        # Create a list with all the map's points not occupated.
-        xempty, yempty = np.where(BasicMap == 0)
-        coordinates = []
-        for x, y in zip(xempty, yempty):
-            coordinates.append((x, y))
-        # Here the number of positions in the map occupated by walls, is calculated.
-        wallPoints = round((len(coordinates) / 100) * self.wallPercentage)
-        path = None
-        while path is None:
-            completeMap = BasicMap.copy()
-            # Random coordinates in the map are chosen and are set as not available (wall).
-            wallCoordinates = random.sample(coordinates, k=wallPoints)
             # Using the A* algorithm, check if there is at least one path between the start and the goal.
-            for wallPoint in wallCoordinates:
-                completeMap[wallPoint] = 1
             path = astar(completeMap, self.startingPoint, self.goal, self.mapSize)
-            if path is not None:
+            if path is not None and len(path) > self.minDistance:
                 self.path = path
                 self.completeMap = completeMap
                 continue
+            # Set a different timer for different map sizes, if the map size is bigger than (50,50) it will take more time to
+            # try the map creation multiple times before giving up.
+            if self.mapSize[0] < 30 and self.mapSize[1] < 30:
+                maxTime = 120
+            else:
+                maxTime = 360
 
+            end = time.time()
+            assert (
+                end - start
+            ) < maxTime, "I can't create a map, try to lower the wallPercentage or the minDistance values"
+
+        print("The map i ready!")
         if self.plotMap is True:
             self._savePlotMap()
 
@@ -208,7 +212,6 @@ class MapGenerator:
         listEmptyPoints = []
         for x, y in zip(xempty, yempty):
             listEmptyPoints.append([x, y])
-
         return (
             self.path,
             self.completeMap,
@@ -217,6 +220,25 @@ class MapGenerator:
             self.goal,
             listEmptyPoints,
         )
+
+    @staticmethod
+    def _findFreeCoordinates(map):
+        xCoords, yCoords = np.where(map == 0)
+        availableCoord = []
+        for x, y in zip(xCoords, yCoords):
+            availableCoord.append((x, y))
+        return availableCoord
+
+    def _CreateRandomWalls(self, completeMap):
+        # Create a list with all the map's points not occupated.
+        availableCoord = MapGenerator._findFreeCoordinates(self.basicMap)
+        # Here the number of positions in the map occupated by walls, is calculated.
+        wallPoints = round((len(availableCoord) / 100) * self.wallPercentage)
+        # Random coordinates in the map are chosen and are set as not available (wall).
+        wallCoordinates = random.sample(availableCoord, k=wallPoints)
+        for wallPoint in wallCoordinates:
+            completeMap[wallPoint] = 1
+        return completeMap
 
     def _savePlotMap(self):
         for i in range(1, 4):
@@ -236,18 +258,25 @@ class MapGenerator:
         plt.legend(
             (walls, start, end),
             ("walls", "start", "end"),
-            loc="center left",
-            bbox_to_anchor=(1, 0.5),
+            bbox_to_anchor=(1.05, 1),
+            loc=2,
+            borderaxespad=0.0,
         )
         title = "Map of size {} startingpoint {} and goal in {}".format(
             self.mapSize, self.startingPoint, self.goal
         )
-        plt.title(title)
+        plt.tight_layout()
         plt.savefig(title + ".png")
 
 
 if __name__ == "__main__":
-    MapGenerator = MapGenerator(mapSize=(10, 10), minDistance=5, wallPercentage=50)
+    MapGenerator = MapGenerator(
+        mapSize=(44, 44),
+        #  startingPoint=(0, 0),
+        #  goal=(10, 3),
+        minDistance=12,
+        wallPercentage=40,
+    )
     (
         path,
         completeMap,
@@ -255,4 +284,4 @@ if __name__ == "__main__":
         startingPoint,
         goal,
         listEmptyPoints,
-    ) = MapGenerator.mapCreator()
+    ) = MapGenerator.createMap()
